@@ -8,6 +8,7 @@ import sys
 import os
 import json
 import hashlib
+import shutil
 import subprocess
 import signal
 import time
@@ -43,7 +44,11 @@ DEFAULT_CONFIG = {
     "font_size": 48,
     "font_family": "Sans Serif",
     "bg_color": "#1a1a2e",
-    "fg_color": "#e0e0e0"
+    "fg_color": "#e0e0e0",
+    "cage_mode": "extend",
+    "ntfy_priority": 3,
+    "ntfy_click": "",
+    "ntfy_tags": ""
 }
 
 KEY_NAMES = [
@@ -154,15 +159,23 @@ class NtfyManager:
         self._thread.wait(200)
 
     @staticmethod
-    def send(server, topic, message, title="Notice Board"):
+    def send(server, topic, message, title="Notice Board",
+             priority=None, click=None, tags=None):
         if not topic or not topic.strip():
             return False
         try:
             url = f"{server.rstrip('/')}/{topic}"
+            headers = {"Title": title}
+            if priority is not None:
+                headers["Priority"] = str(priority)
+            if click:
+                headers["Click"] = click
+            if tags:
+                headers["Tags"] = tags
             requests.post(
                 url,
                 data=message.encode("utf-8"),
-                headers={"Title": title},
+                headers=headers,
                 timeout=10,
             )
             return True
@@ -256,6 +269,27 @@ class FirstRunDialog(QDialog):
             self.key_combo.setCurrentIndex(idx)
         form.addRow("Help Key:", self.key_combo)
 
+        self.cage_mode_combo = QComboBox()
+        self.cage_mode_combo.addItems(["extend", "last"])
+        self.cage_mode_combo.setEditable(True)
+        idx = self.cage_mode_combo.findText(self.config.get("cage_mode", "extend"))
+        if idx >= 0:
+            self.cage_mode_combo.setCurrentIndex(idx)
+        form.addRow("Cage Display Mode:", self.cage_mode_combo)
+
+        self.priority_spin = QSpinBox()
+        self.priority_spin.setRange(1, 5)
+        self.priority_spin.setValue(self.config.get("ntfy_priority", 3))
+        form.addRow("ntfy Priority (1-5):", self.priority_spin)
+
+        self.click_input = QLineEdit(self.config.get("ntfy_click", ""))
+        self.click_input.setPlaceholderText("URL opened when help notification is clicked")
+        form.addRow("ntfy Click URL:", self.click_input)
+
+        self.tags_input = QLineEdit(self.config.get("ntfy_tags", ""))
+        self.tags_input.setPlaceholderText("e.g. +1,loudspeaker")
+        form.addRow("ntfy Tags:", self.tags_input)
+
         self.notice_input = QLineEdit(self.config.get("notice_text", ""))
         self.notice_input.setPlaceholderText("e.g. Temporarily away. Press F1 for help.")
         form.addRow("Notice Text:", self.notice_input)
@@ -283,6 +317,10 @@ class FirstRunDialog(QDialog):
         self.config["ntfy_server"] = self.server_input.text().strip()
         self.config["help_message"] = self.help_msg_input.text().strip()
         self.config["help_key"] = self.key_combo.currentText()
+        self.config["cage_mode"] = self.cage_mode_combo.currentText().strip()
+        self.config["ntfy_priority"] = self.priority_spin.value()
+        self.config["ntfy_click"] = self.click_input.text().strip()
+        self.config["ntfy_tags"] = self.tags_input.text().strip()
         self.config["notice_text"] = self.notice_input.text().strip()
         save_config(self.config)
         self.accept()
@@ -297,6 +335,7 @@ class AdminDialog(QDialog):
         self.config = config
         self.wants_exit = False
         self._lock = not bool(config.get("admin_password_hash"))
+        self._has_fprintd = shutil.which("fprintd-verify") is not None
         self.setWindowTitle("Admin Panel — Notice Board")
         self.setMinimumWidth(540)
         self._build()
@@ -318,6 +357,10 @@ class AdminDialog(QDialog):
         unlock_btn.clicked.connect(self._try_unlock)
         pw_row.addWidget(unlock_btn)
         auth_layout.addLayout(pw_row)
+        if self._has_fprintd:
+            fp_btn = QPushButton("Authenticate with Fingerprint")
+            fp_btn.clicked.connect(self._try_fingerprint)
+            auth_layout.addWidget(fp_btn)
         layout.addWidget(self._auth_widget)
 
         # -- Panel layer (hidden until unlocked) --
@@ -358,6 +401,27 @@ class AdminDialog(QDialog):
         self._font_size.setRange(12, 200)
         self._font_size.setValue(self.config.get("font_size", 48))
         sf.addRow("Font Size:", self._font_size)
+
+        self._cage_mode = QComboBox()
+        self._cage_mode.addItems(["extend", "last"])
+        self._cage_mode.setEditable(True)
+        idx = self._cage_mode.findText(self.config.get("cage_mode", "extend"))
+        if idx >= 0:
+            self._cage_mode.setCurrentIndex(idx)
+        sf.addRow("Cage Display Mode:", self._cage_mode)
+
+        self._priority = QSpinBox()
+        self._priority.setRange(1, 5)
+        self._priority.setValue(self.config.get("ntfy_priority", 3))
+        sf.addRow("ntfy Priority (1-5):", self._priority)
+
+        self._click_url = QLineEdit(self.config.get("ntfy_click", ""))
+        self._click_url.setPlaceholderText("URL opened when help notification is clicked")
+        sf.addRow("ntfy Click URL:", self._click_url)
+
+        self._tags = QLineEdit(self.config.get("ntfy_tags", ""))
+        self._tags.setPlaceholderText("e.g. +1,loudspeaker")
+        sf.addRow("ntfy Tags:", self._tags)
         panel.addWidget(sg)
 
         # Password change
@@ -420,6 +484,26 @@ class AdminDialog(QDialog):
             return
         self._show_panel()
 
+    def _try_fingerprint(self):
+        try:
+            result = subprocess.run(
+                ["fprintd-verify"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                self._show_panel()
+            else:
+                QMessageBox.warning(
+                    self, "Fingerprint Failed",
+                    "Fingerprint verification failed. Try again or use password."
+                )
+        except subprocess.TimeoutExpired:
+            QMessageBox.warning(self, "Fingerprint Timeout", "Verification timed out.")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Fingerprint error: {e}")
+
     def _show_panel(self):
         self._auth_widget.hide()
         self._panel_widget.show()
@@ -439,6 +523,10 @@ class AdminDialog(QDialog):
         self.config["help_message"] = self._help_msg.text().strip()
         self.config["help_key"] = self._help_key.currentText()
         self.config["font_size"] = self._font_size.value()
+        self.config["cage_mode"] = self._cage_mode.currentText().strip()
+        self.config["ntfy_priority"] = self._priority.value()
+        self.config["ntfy_click"] = self._click_url.text().strip()
+        self.config["ntfy_tags"] = self._tags.text().strip()
         save_config(self.config)
         QMessageBox.information(self, "Saved", "Settings saved. Some take effect on restart.")
 
@@ -579,6 +667,9 @@ class NoticeBoard(QMainWindow):
             self.config["ntfy_server"],
             self.config["publish_topic"],
             msg,
+            priority=self.config.get("ntfy_priority"),
+            click=self.config.get("ntfy_click") or None,
+            tags=self.config.get("ntfy_tags") or None,
         )
         if ok:
             self._status_label.setText("Help request sent")

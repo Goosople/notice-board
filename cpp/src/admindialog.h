@@ -9,6 +9,7 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QStackedWidget>
+#include <QProcess>
 
 #include "config.h"
 
@@ -22,6 +23,7 @@ signals:
 
 private slots:
     void tryUnlock();
+    void tryFingerprint();
     void applyNotice();
     void saveSettings();
     void changePassword();
@@ -32,12 +34,14 @@ private:
     void showPanel();
 
     Config &m_config;
+    bool m_hasFprintd = false;
 
     QStackedWidget *m_stack;
     QWidget *m_authPage;
     QWidget *m_panelPage;
 
     QLineEdit *m_pwInput;
+    QPushButton *m_fpBtn = nullptr;
 
     QTextEdit *m_noticeEdit;
     QLineEdit *m_serverEdit;
@@ -46,5 +50,9 @@ private:
     QLineEdit *m_helpMsgEdit;
     QComboBox *m_helpKeyCombo;
     QSpinBox *m_fontSizeSpin;
+    QComboBox *m_cageModeCombo;
+    QSpinBox *m_prioritySpin;
+    QLineEdit *m_clickEdit;
+    QLineEdit *m_tagsEdit;
     QLineEdit *m_newPwEdit;
 };

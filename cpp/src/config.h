@@ -24,6 +24,10 @@ struct Config {
     QString fontFamily    = "Sans Serif";
     QString bgColor       = "#1a1a2e";
     QString fgColor       = "#e0e0e0";
+    QString cageMode      = "extend";
+    int ntfyPriority      = 3;
+    QString ntfyClick;
+    QString ntfyTags;
 
     static QString configPath() {
         return QStandardPaths::writableLocation(QStandardPaths::HomeLocation)
@@ -49,6 +53,10 @@ struct Config {
         if (o.contains("font_family"))        c.fontFamily   = o["font_family"].toString();
         if (o.contains("bg_color"))           c.bgColor      = o["bg_color"].toString();
         if (o.contains("fg_color"))           c.fgColor      = o["fg_color"].toString();
+        if (o.contains("cage_mode"))          c.cageMode     = o["cage_mode"].toString();
+        if (o.contains("ntfy_priority"))      c.ntfyPriority = o["ntfy_priority"].toInt(3);
+        if (o.contains("ntfy_click"))         c.ntfyClick    = o["ntfy_click"].toString();
+        if (o.contains("ntfy_tags"))          c.ntfyTags     = o["ntfy_tags"].toString();
         return c;
     }
 
@@ -70,6 +78,10 @@ struct Config {
         o["font_family"]         = fontFamily;
         o["bg_color"]            = bgColor;
         o["fg_color"]            = fgColor;
+        o["cage_mode"]           = cageMode;
+        o["ntfy_priority"]       = ntfyPriority;
+        o["ntfy_click"]          = ntfyClick;
+        o["ntfy_tags"]           = ntfyTags;
         f.write(QJsonDocument(o).toJson(QJsonDocument::Indented));
     }
 

@@ -142,7 +142,9 @@ void NoticeBoard::openAdmin() {
 
 void NoticeBoard::sendHelp() {
     bool ok = NtfyListener::send(m_config.ntfyServer, m_config.publishTopic,
-                                 m_config.helpMessage);
+                                 m_config.helpMessage, "Notice Board",
+                                 m_config.ntfyPriority,
+                                 m_config.ntfyClick, m_config.ntfyTags);
     m_statusLabel->setText(ok ? "Help request sent" : "Failed to send");
     QTimer::singleShot(4000, this, [this]() {
         m_statusLabel->setText("");

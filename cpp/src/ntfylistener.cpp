@@ -75,7 +75,8 @@ void NtfyListener::onReply(QNetworkReply *reply) {
 }
 
 bool NtfyListener::send(const QString &server, const QString &topic,
-                        const QString &message, const QString &title) {
+                        const QString &message, const QString &title,
+                        int priority, const QString &click, const QString &tags) {
     if (topic.trimmed().isEmpty())
         return false;
     QString s = server;
@@ -84,6 +85,12 @@ bool NtfyListener::send(const QString &server, const QString &topic,
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::ContentTypeHeader, "text/plain");
     req.setRawHeader("Title", title.toUtf8());
+    if (priority > 0)
+        req.setRawHeader("Priority", QByteArray::number(priority));
+    if (!click.isEmpty())
+        req.setRawHeader("Click", click.toUtf8());
+    if (!tags.isEmpty())
+        req.setRawHeader("Tags", tags.toUtf8());
 
     QNetworkAccessManager nam;
     auto *reply = nam.post(req, message.toUtf8());

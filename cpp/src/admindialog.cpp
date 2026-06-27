@@ -5,6 +5,8 @@
 #include <QFormLayout>
 #include <QMessageBox>
 #include <QKeySequence>
+#include <QStandardPaths>
+#include <QFileInfo>
 
 static const char *KEY_NAMES[] = {
     "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
@@ -16,6 +18,7 @@ AdminDialog::AdminDialog(Config &cfg, QWidget *parent)
 {
     setWindowTitle("Admin Panel — Notice Board");
     setMinimumWidth(540);
+    m_hasFprintd = !QStandardPaths::findExecutable("fprintd-verify").isEmpty();
     buildUi();
 }
 
@@ -37,6 +40,11 @@ void AdminDialog::buildUi() {
     connect(m_pwInput, &QLineEdit::returnPressed, this, &AdminDialog::tryUnlock);
     pwRow->addWidget(unlockBtn);
     al->addLayout(pwRow);
+    if (m_hasFprintd) {
+        m_fpBtn = new QPushButton("Authenticate with Fingerprint");
+        connect(m_fpBtn, &QPushButton::clicked, this, &AdminDialog::tryFingerprint);
+        al->addWidget(m_fpBtn);
+    }
     al->addStretch();
     m_stack->addWidget(m_authPage);
 
@@ -76,6 +84,25 @@ void AdminDialog::buildUi() {
     m_fontSizeSpin->setRange(12, 200);
     m_fontSizeSpin->setValue(m_config.fontSize);
     sf->addRow("Font Size:", m_fontSizeSpin);
+
+    m_cageModeCombo = new QComboBox;
+    m_cageModeCombo->addItems({"extend", "last"});
+    m_cageModeCombo->setEditable(true);
+    m_cageModeCombo->setCurrentText(m_config.cageMode);
+    sf->addRow("Cage Display Mode:", m_cageModeCombo);
+
+    m_prioritySpin = new QSpinBox;
+    m_prioritySpin->setRange(1, 5);
+    m_prioritySpin->setValue(m_config.ntfyPriority);
+    sf->addRow("ntfy Priority (1-5):", m_prioritySpin);
+
+    m_clickEdit = new QLineEdit(m_config.ntfyClick);
+    m_clickEdit->setPlaceholderText("URL opened when help notification is clicked");
+    sf->addRow("ntfy Click URL:", m_clickEdit);
+
+    m_tagsEdit = new QLineEdit(m_config.ntfyTags);
+    m_tagsEdit->setPlaceholderText("e.g. +1,loudspeaker");
+    sf->addRow("ntfy Tags:", m_tagsEdit);
     pl->addWidget(sg);
 
     // Password change
@@ -133,6 +160,25 @@ void AdminDialog::tryUnlock() {
     }
 }
 
+void AdminDialog::tryFingerprint() {
+    auto *proc = new QProcess(this);
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, proc](int code, QProcess::ExitStatus) {
+        if (code == 0) {
+            showPanel();
+        } else {
+            QMessageBox::warning(this, "Fingerprint Failed",
+                "Fingerprint verification failed. Try again or use password.");
+        }
+        proc->deleteLater();
+    });
+    connect(proc, &QProcess::errorOccurred, this, [this, proc](QProcess::ProcessError) {
+        QMessageBox::warning(this, "Error", "Could not run fprintd-verify.");
+        proc->deleteLater();
+    });
+    proc->start("fprintd-verify");
+}
+
 void AdminDialog::showPanel() {
     m_stack->setCurrentIndex(1);
 }
@@ -150,6 +196,10 @@ void AdminDialog::saveSettings() {
     m_config.helpMessage    = m_helpMsgEdit->text().trimmed();
     m_config.helpKey        = m_helpKeyCombo->currentText();
     m_config.fontSize       = m_fontSizeSpin->value();
+    m_config.cageMode       = m_cageModeCombo->currentText().trimmed();
+    m_config.ntfyPriority   = m_prioritySpin->value();
+    m_config.ntfyClick      = m_clickEdit->text().trimmed();
+    m_config.ntfyTags       = m_tagsEdit->text().trimmed();
     m_config.save();
     QMessageBox::information(this, "Saved", "Settings saved. Some take effect on restart.");
 }

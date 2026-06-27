@@ -2,6 +2,7 @@
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QComboBox>
+#include <QSpinBox>
 #include <QFormLayout>
 #include <QDialogButtonBox>
 #include <QMessageBox>
@@ -64,6 +65,25 @@ static bool firstRunWizard(Config &cfg) {
     helpKey->setCurrentText(cfg.helpKey);
     form->addRow("Help Key:", helpKey);
 
+    auto *cageMode = new QComboBox;
+    cageMode->addItems({"extend", "last"});
+    cageMode->setEditable(true);
+    cageMode->setCurrentText(cfg.cageMode);
+    form->addRow("Cage Display Mode:", cageMode);
+
+    auto *priority = new QSpinBox;
+    priority->setRange(1, 5);
+    priority->setValue(cfg.ntfyPriority);
+    form->addRow("ntfy Priority (1-5):", priority);
+
+    auto *clickUrl = new QLineEdit(cfg.ntfyClick);
+    clickUrl->setPlaceholderText("URL opened when help notification is clicked");
+    form->addRow("ntfy Click URL:", clickUrl);
+
+    auto *tags = new QLineEdit(cfg.ntfyTags);
+    tags->setPlaceholderText("e.g. +1,loudspeaker");
+    form->addRow("ntfy Tags:", tags);
+
     auto *notice = new QLineEdit(cfg.noticeText);
     notice->setPlaceholderText("e.g. Temporarily away. Press F1 for help.");
     form->addRow("Notice Text:", notice);
@@ -86,6 +106,10 @@ static bool firstRunWizard(Config &cfg) {
         cfg.ntfyServer     = server->text().trimmed();
         cfg.helpMessage    = helpMsg->text().trimmed();
         cfg.helpKey        = helpKey->currentText();
+        cfg.cageMode       = cageMode->currentText().trimmed();
+        cfg.ntfyPriority   = priority->value();
+        cfg.ntfyClick      = clickUrl->text().trimmed();
+        cfg.ntfyTags       = tags->text().trimmed();
         cfg.noticeText     = notice->text().trimmed();
         cfg.save();
         dlg.accept();

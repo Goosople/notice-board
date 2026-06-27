@@ -22,7 +22,8 @@ public:
     void stop();
 
     static bool send(const QString &server, const QString &topic, const QString &message,
-                     const QString &title = "Notice Board");
+                     const QString &title = "Notice Board", int priority = 0,
+                     const QString &click = "", const QString &tags = "");
 
 signals:
     void noticeReceived(const QString &text);
