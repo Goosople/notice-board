@@ -1,23 +1,21 @@
 #include "noticeboard.h"
 #include "admindialog.h"
+#include "ntfylistener.h"
 
 #include <QVBoxLayout>
 #include <QFont>
 #include <QKeyEvent>
 #include <QApplication>
 #include <QCoreApplication>
-#include <QMessageBox>
 
 NoticeBoard::NoticeBoard(Config &cfg, QWidget *parent)
     : QMainWindow(parent), m_config(cfg)
 {
     setupUi();
-    startNtfy();
     startSleepInhibit();
 }
 
 NoticeBoard::~NoticeBoard() {
-    if (m_ntfy) m_ntfy->stop();
     if (m_sleepInhibit) {
         m_sleepInhibit->terminate();
         m_sleepInhibit->waitForFinished(3000);
@@ -63,29 +61,6 @@ void NoticeBoard::applyStyle() {
         QString("QMainWindow { background-color: %1; } QWidget { background-color: %1; color: %2; }")
             .arg(bg, fg)
     );
-}
-
-// -- ntfy --------------------------------------------------------------------
-void NoticeBoard::startNtfy() {
-    m_ntfy = new NtfyListener(m_config, this);
-    connect(m_ntfy, &NtfyListener::noticeReceived, this, &NoticeBoard::onNoticeReceived);
-    connect(m_ntfy, &NtfyListener::connectionChanged, this, &NoticeBoard::onConnectionChanged);
-    m_ntfy->start();
-}
-
-void NoticeBoard::onNoticeReceived(const QString &text) {
-    m_config.noticeText = text;
-    m_config.save();
-    updateNotice(text);
-}
-
-void NoticeBoard::onConnectionChanged(bool ok) {
-    if (ok) {
-        m_wasOnline = true;
-        m_statusLabel->setText("");
-    } else if (m_wasOnline) {
-        m_statusLabel->setText("Offline — waiting for connection…");
-    }
 }
 
 // -- Sleep inhibit -----------------------------------------------------------
@@ -141,10 +116,10 @@ void NoticeBoard::openAdmin() {
 }
 
 void NoticeBoard::sendHelp() {
-    bool ok = NtfyListener::send(m_config.ntfyServer, m_config.publishTopic,
-                                 m_config.helpMessage, "Notice Board",
-                                 m_config.ntfyPriority,
-                                 m_config.ntfyClick, m_config.ntfyTags);
+    bool ok = NtfySender::send(m_config.ntfyServer, m_config.publishTopic,
+                               m_config.helpMessage, "Notice Board",
+                               m_config.ntfyPriority,
+                               m_config.ntfyClick, m_config.ntfyTags);
     m_statusLabel->setText(ok ? "Help request sent" : "Failed to send");
     QTimer::singleShot(4000, this, [this]() {
         m_statusLabel->setText("");

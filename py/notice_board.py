@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Notice Board — Fullscreen notice display with remote control via ntfy.
+Notice Board — Fullscreen notice display with ntfy help-request sending.
 Runs on KDE Wayland; prevents sleep and locks the display.
 """
 
@@ -11,19 +11,17 @@ import hashlib
 import shutil
 import subprocess
 import signal
-import time
-import threading
 from pathlib import Path
 
 import requests
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QThread
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QLabel, QWidget, QVBoxLayout,
     QDialog, QLineEdit, QTextEdit, QPushButton, QFormLayout,
     QMessageBox, QHBoxLayout, QGroupBox, QSpinBox, QComboBox,
     QDialogButtonBox
 )
-from PyQt6.QtGui import QFont, QKeySequence, QShortcut, QColor
+from PyQt6.QtGui import QFont, QKeySequence, QShortcut
 
 # ---------------------------------------------------------------------------
 # Paths & defaults
@@ -34,13 +32,11 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULT_CONFIG = {
     "ntfy_server": "https://ntfy.sh",
-    "subscribe_topic": "",
     "publish_topic": "",
     "admin_password_hash": "",
     "help_message": "Help requested.",
     "help_key": "F1",
     "notice_text": "",
-    "poll_interval": 15,
     "font_size": 48,
     "font_family": "Sans Serif",
     "bg_color": "#1a1a2e",
@@ -93,94 +89,30 @@ def hash_password(pw):
 
 
 # ===================================================================
-# Ntfy listener (runs in background thread)
+# Ntfy sender
 # ===================================================================
-class NtfyListener(QObject):
-    notice_received = pyqtSignal(str)
-    connection_changed = pyqtSignal(bool)
-
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-        self._running = False
-        self._last_id = None
-
-    def run(self):
-        self._running = True
-        while self._running:
-            try:
-                topic = self.config["subscribe_topic"].strip()
-                if not topic:
-                    time.sleep(self.config.get("poll_interval", 15))
-                    continue
-
-                server = self.config["ntfy_server"].rstrip("/")
-                poll = self.config.get("poll_interval", 15)
-                url = f"{server}/{topic}/json?poll={poll}"
-                if self._last_id:
-                    url += f"&since={self._last_id}"
-
-                resp = requests.get(url, timeout=max(30, poll * 2 + 5))
-                self.connection_changed.emit(True)
-
-                if resp.status_code == 200:
-                    messages = resp.json()
-                    if isinstance(messages, list) and messages:
-                        latest = messages[-1]
-                        text = latest.get("message", "")
-                        self._last_id = latest.get("id", self._last_id)
-                        if text and text.strip():
-                            self.notice_received.emit(text)
-            except requests.RequestException:
-                self.connection_changed.emit(False)
-                time.sleep(5)
-            except Exception:
-                time.sleep(5)
-
-    def stop(self):
-        self._running = False
-
-
-class NtfyManager:
-    """Runs NtfyListener on a QThread."""
-
-    def __init__(self, config):
-        self.listener = NtfyListener(config)
-        self._thread = QThread()
-        self.listener.moveToThread(self._thread)
-        self._thread.started.connect(self.listener.run)
-
-    def start(self):
-        self._thread.start()
-
-    def stop(self):
-        self.listener.stop()
-        self._thread.quit()
-        self._thread.wait(200)
-
-    @staticmethod
-    def send(server, topic, message, title="Notice Board",
-             priority=None, click=None, tags=None):
-        if not topic or not topic.strip():
-            return False
-        try:
-            url = f"{server.rstrip('/')}/{topic}"
-            headers = {"Title": title}
-            if priority is not None:
-                headers["Priority"] = str(priority)
-            if click:
-                headers["Click"] = click
-            if tags:
-                headers["Tags"] = tags
-            requests.post(
-                url,
-                data=message.encode("utf-8"),
-                headers=headers,
-                timeout=10,
-            )
-            return True
-        except Exception:
-            return False
+def send_ntfy(server, topic, message, title="Notice Board",
+              priority=None, click=None, tags=None):
+    if not topic or not topic.strip():
+        return False
+    try:
+        url = f"{server.rstrip('/')}/{topic}"
+        headers = {"Title": title}
+        if priority is not None:
+            headers["Priority"] = str(priority)
+        if click:
+            headers["Click"] = click
+        if tags:
+            headers["Tags"] = tags
+        requests.post(
+            url,
+            data=message.encode("utf-8"),
+            headers=headers,
+            timeout=10,
+        )
+        return True
+    except Exception:
+        return False
 
 
 # ===================================================================
@@ -250,9 +182,6 @@ class FirstRunDialog(QDialog):
         self.pw_confirm.setPlaceholderText("Confirm password")
         form.addRow("Confirm:", self.pw_confirm)
 
-        self.topic_input = QLineEdit(self.config.get("subscribe_topic", ""))
-        form.addRow("ntfy Topic (receive):", self.topic_input)
-
         self.pub_topic_input = QLineEdit(self.config.get("publish_topic", ""))
         form.addRow("ntfy Topic (send):", self.pub_topic_input)
 
@@ -312,7 +241,6 @@ class FirstRunDialog(QDialog):
             QMessageBox.warning(self, "Error", "Passwords do not match.")
             return
         self.config["admin_password_hash"] = hash_password(pw)
-        self.config["subscribe_topic"] = self.topic_input.text().strip()
         self.config["publish_topic"] = self.pub_topic_input.text().strip()
         self.config["ntfy_server"] = self.server_input.text().strip()
         self.config["help_message"] = self.help_msg_input.text().strip()
@@ -383,8 +311,6 @@ class AdminDialog(QDialog):
         sf = QFormLayout(sg)
         self._server = QLineEdit(self.config.get("ntfy_server", ""))
         sf.addRow("ntfy Server:", self._server)
-        self._sub_topic = QLineEdit(self.config.get("subscribe_topic", ""))
-        sf.addRow("Subscribe Topic:", self._sub_topic)
         self._pub_topic = QLineEdit(self.config.get("publish_topic", ""))
         sf.addRow("Publish Topic:", self._pub_topic)
         self._help_msg = QLineEdit(self.config.get("help_message", ""))
@@ -518,7 +444,6 @@ class AdminDialog(QDialog):
 
     def _save_all(self):
         self.config["ntfy_server"] = self._server.text().strip()
-        self.config["subscribe_topic"] = self._sub_topic.text().strip()
         self.config["publish_topic"] = self._pub_topic.text().strip()
         self.config["help_message"] = self._help_msg.text().strip()
         self.config["help_key"] = self._help_key.currentText()
@@ -561,11 +486,9 @@ class NoticeBoard(QMainWindow):
         super().__init__()
         self.config = config
         self._help_sc = None
-        self._was_online = False
         self._exit_requested = False
 
         self._init_ui()
-        self._init_ntfy()
         self._init_shortcuts()
         self._sleep = SleepInhibitor()
         self._sleep.start()
@@ -610,25 +533,6 @@ class NoticeBoard(QMainWindow):
         )
         self._status_label.setStyleSheet("font-size: 13px; color: #888;")
 
-    # -- ntfy ---------------------------------------------------------------
-    def _init_ntfy(self):
-        self._ntfy = NtfyManager(self.config)
-        self._ntfy.listener.notice_received.connect(self._on_notice)
-        self._ntfy.listener.connection_changed.connect(self._on_conn)
-        self._ntfy.start()
-
-    def _on_notice(self, text):
-        self.config["notice_text"] = text
-        save_config(self.config)
-        self.update_notice(text)
-
-    def _on_conn(self, ok):
-        if ok:
-            self._was_online = True
-            self._status_label.setText("")
-        elif self._was_online:
-            self._status_label.setText("Offline — waiting for connection…")
-
     # -- Shortcuts ----------------------------------------------------------
     def _init_shortcuts(self):
         # Admin panel: Ctrl+Shift+A
@@ -663,7 +567,7 @@ class NoticeBoard(QMainWindow):
 
     def _send_help(self):
         msg = self.config.get("help_message", "Help requested.")
-        ok = NtfyManager.send(
+        ok = send_ntfy(
             self.config["ntfy_server"],
             self.config["publish_topic"],
             msg,
@@ -696,8 +600,6 @@ class NoticeBoard(QMainWindow):
         super().keyPressEvent(event)
 
     def shutdown(self):
-        if self._ntfy:
-            self._ntfy.stop()
         self._sleep.stop()
 
 

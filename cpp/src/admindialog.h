@@ -45,7 +45,6 @@ private:
 
     QTextEdit *m_noticeEdit;
     QLineEdit *m_serverEdit;
-    QLineEdit *m_subTopicEdit;
     QLineEdit *m_pubTopicEdit;
     QLineEdit *m_helpMsgEdit;
     QComboBox *m_helpKeyCombo;

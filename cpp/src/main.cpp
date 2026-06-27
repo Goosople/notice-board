@@ -46,9 +46,6 @@ static bool firstRunWizard(Config &cfg) {
     pwConfirm->setPlaceholderText("Confirm password");
     form->addRow("Confirm:", pwConfirm);
 
-    auto *topic = new QLineEdit(cfg.subscribeTopic);
-    form->addRow("ntfy Topic (receive):", topic);
-
     auto *pubTopic = new QLineEdit(cfg.publishTopic);
     form->addRow("ntfy Topic (send):", pubTopic);
 
@@ -101,7 +98,6 @@ static bool firstRunWizard(Config &cfg) {
             return;
         }
         cfg.adminPasswordHash = Config::hash(pw->text());
-        cfg.subscribeTopic = topic->text().trimmed();
         cfg.publishTopic   = pubTopic->text().trimmed();
         cfg.ntfyServer     = server->text().trimmed();
         cfg.helpMessage    = helpMsg->text().trimmed();

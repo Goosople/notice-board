@@ -69,8 +69,6 @@ void AdminDialog::buildUi() {
     auto *sf = new QFormLayout(sg);
     m_serverEdit = new QLineEdit(m_config.ntfyServer);
     sf->addRow("ntfy Server:", m_serverEdit);
-    m_subTopicEdit = new QLineEdit(m_config.subscribeTopic);
-    sf->addRow("Subscribe Topic:", m_subTopicEdit);
     m_pubTopicEdit = new QLineEdit(m_config.publishTopic);
     sf->addRow("Publish Topic:", m_pubTopicEdit);
     m_helpMsgEdit = new QLineEdit(m_config.helpMessage);
@@ -191,7 +189,6 @@ void AdminDialog::applyNotice() {
 
 void AdminDialog::saveSettings() {
     m_config.ntfyServer    = m_serverEdit->text().trimmed();
-    m_config.subscribeTopic = m_subTopicEdit->text().trimmed();
     m_config.publishTopic   = m_pubTopicEdit->text().trimmed();
     m_config.helpMessage    = m_helpMsgEdit->text().trimmed();
     m_config.helpKey        = m_helpKeyCombo->currentText();
